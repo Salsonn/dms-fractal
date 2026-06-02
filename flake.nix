@@ -34,7 +34,6 @@
           fi
 
           perl -C -0777 -pe 's/text:\s*".*?"/text: "\\x{03BB}"/s' -i ${qmlPath}
-          echo "Marked for death or something idk" >> ${qmlPath}
         '' + (if builtins.hasAttr "postPatch" old then old.postPatch else "");
       });
 
@@ -55,12 +54,17 @@
 
     patchedDms = dms // { packages = patchedPackages; };
 
+    # Whitelist: only forward these outputs from the upstream flake
+    whitelist = [ "packages" "homeModules" "overlays" "apps" "devShells" "nixosModules" "checks" ];
+
     upstreamOutputNames = builtins.attrNames dms;
+
+    # Filter upstream outputs to the whitelist
+    filteredOutputs = builtins.filter (name: builtins.elem name whitelist) upstreamOutputNames;
 
     forwardedOutputs = builtins.foldl' (acc: name:
       acc // (builtins.listToAttrs [{ name = name; value = builtins.getAttr name patchedDms; }])
-    ) {} upstreamOutputNames;
-
+    ) {} filteredOutputs;
 
   in
     forwardedOutputs;
