@@ -46,7 +46,6 @@
       in {
         name = system;
         value = {
-          dms-shell-patched = patched;
           "${upstreamName}" = patched;
         };
       }
