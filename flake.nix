@@ -30,10 +30,11 @@
             (acc: n: if acc == null then tryName n else acc)
             null
             candidateNames;
+        sep = ", ";
       in
         if found != null then found
         else if builtins.length attrs == 1 then builtins.head attrs
-        else throw "dms-patch-flake: could not determine upstream package attribute. Available attrs: ${builtins.concatStringsSep \", \" attrs}";
+        else throw "dms-patch-flake: could not determine upstream package attribute. Available attrs: ${builtins.concatStringsSep sep attrs}";
 
     # Function: produce a patched derivation from an upstream derivation
     # We avoid embedding the lambda glyph in Nix; instead use Perl's \x{03BB} escape at build time.
