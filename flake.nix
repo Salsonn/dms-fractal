@@ -21,27 +21,34 @@
     pickAttrName = pkgset:
       let
         attrs = builtins.attrNames pkgset;
-        # find candidate names that actually exist in attrs
-        matches = builtins.filter (n: builtins.elem n attrs) candidateNames;
+
+        tryName = name:
+          if builtins.elem name attrs then name else null;
+
+        found =
+          builtins.foldl'
+            (acc: n: if acc == null then tryName n else acc)
+            null
+            candidateNames;
       in
-        if builtins.length matches > 0 then builtins.head matches
+        if found != null then found
         else if builtins.length attrs == 1 then builtins.head attrs
         else throw "dms-patch-flake: could not determine upstream package attribute. Available attrs: ${builtins.concatStringsSep \", \" attrs}";
 
     # Function: produce a patched derivation from an upstream derivation
-    # We avoid embedding the lambda glyph in Nix; instead use Perl's \x{03BB} escape.
+    # We avoid embedding the lambda glyph in Nix; instead use Perl's \x{03BB} escape at build time.
     makePatched = upstreamDrv:
       upstreamDrv.overrideAttrs (old: {
         postPatch = ''
-          # Ensure the expected file exists in the source tree; fail early if not.
+          # Fail early if the expected file is not present in the source tree.
           if [ ! -f "${qmlPath}" ]; then
             echo "ERROR: expected QML path ${qmlPath} not found in source tree" >&2
             exit 1
           fi
 
           # Replace the entire text: "..." property with a lambda using Perl's \x{03BB}.
-          # The s///s modifier makes . match newlines; -0777 reads whole file.
-          perl -C -0777 -pe 's/text:\s*".*?"/text: "\x{03BB}"/s' -i ${qmlPath}
+          # -0777 reads the whole file; s///s makes . match newlines.
+          perl -C -0777 -pe 's/text:\s*".*?"/text: "\\x{03BB}"/s' -i ${qmlPath}
 
           ${optionalString (old.postPatch != null) ''
             ${old.postPatch}
