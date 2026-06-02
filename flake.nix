@@ -17,22 +17,13 @@
     pickAttrName = pkgset:
       let
         attrs = builtins.attrNames pkgset;
-
-        tryName = name:
-          if builtins.elem name attrs then name else null;
-
-        found =
-          builtins.foldl'
-            (acc: n: if acc == null then tryName n else acc)
-            null
-            candidateNames;
-
+        tryName = name: if builtins.elem name attrs then name else null;
+        found = builtins.foldl' (acc: n: if acc == null then tryName n else acc) null candidateNames;
         sep = ", ";
       in
         if found != null then found
         else if builtins.length attrs == 1 then builtins.head attrs
-        else throw
-          "dms-patch-flake: could not determine upstream package attribute. Available attrs: ${builtins.concatStringsSep sep attrs}";
+        else throw "dms-patch-flake: could not determine upstream package attribute. Available attrs: ${builtins.concatStringsSep sep attrs}";
 
     makePatched = upstreamDrv:
       upstreamDrv.overrideAttrs (old: {
@@ -45,9 +36,8 @@
           perl -C -0777 -pe 's/text:\s*".*?"/text: "\\x{03BB}"/s' -i ${qmlPath}
         '' + (if builtins.hasAttr "postPatch" old then old.postPatch else "");
       });
-  in
-  {
-    packages = builtins.listToAttrs (map (system:
+
+    patchedPackages = builtins.listToAttrs (map (system:
       let
         pkgset = builtins.getAttr system dms.packages;
         upstreamName = pickAttrName pkgset;
@@ -56,10 +46,21 @@
       in {
         name = system;
         value = {
-          dms-fractal = patched;
-          upstream = upstreamPkg;
+          dms-shell-patched = patched;
+          "${upstreamName}" = patched;
         };
       }
     ) systems);
-  };
+
+    patchedDms = dms // { packages = patchedPackages; };
+
+    upstreamOutputNames = builtins.attrNames dms;
+
+    forwardedOutputs = builtins.foldl' (acc: name:
+      acc // (builtins.listToAttrs [{ name = name; value = builtins.getAttr name patchedDms; }])
+    ) {} upstreamOutputNames;
+
+
+  in
+    forwardedOutputs;
 }
