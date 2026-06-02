@@ -34,6 +34,7 @@
           fi
 
           perl -C -0777 -pe 's/text:\s*".*?"/text: "\\x{03BB}"/s' -i ${qmlPath}
+          echo "Marked for death or something idk" >> ${qmlPath}
         '' + (if builtins.hasAttr "postPatch" old then old.postPatch else "");
       });
 
