@@ -14,9 +14,6 @@
     # QML path inside the dms-shell derivation source tree (adjust if upstream moves it)
     qmlPath = "share/quickshell/dms/Modules/DankBar/Widgets/Clock.qml";
 
-    # Replacement: literal lambda glyph (UTF-8). If you prefer the escape sequence, change below.
-    replacement = 'text: "λ"';
-
     # Candidate attribute names to try inside the upstream package set
     candidateNames = [ "dms-shell" "dms" "dmsShell" "default" ];
 
@@ -32,6 +29,7 @@
         else throw "dms-patch-flake: could not determine upstream package attribute. Available attrs: ${builtins.concatStringsSep \", \" attrs}";
 
     # Function: produce a patched derivation from an upstream derivation
+    # We avoid embedding the lambda glyph in Nix; instead use Perl's \x{03BB} escape.
     makePatched = upstreamDrv:
       upstreamDrv.overrideAttrs (old: {
         postPatch = ''
@@ -41,9 +39,9 @@
             exit 1
           fi
 
-          # Replace the entire text: "..." property with the lambda.
-          # Use perl with UTF-8 support to be robust to upstream glyphs and encodings.
-          perl -C -0777 -pe 's/text:\s*".*?"/${replacement}/s' -i ${qmlPath}
+          # Replace the entire text: "..." property with a lambda using Perl's \x{03BB}.
+          # The s///s modifier makes . match newlines; -0777 reads whole file.
+          perl -C -0777 -pe 's/text:\s*".*?"/text: "\x{03BB}"/s' -i ${qmlPath}
 
           ${optionalString (old.postPatch != null) ''
             ${old.postPatch}
