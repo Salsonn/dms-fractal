@@ -73,7 +73,7 @@
             pkg = upstreamPkg;
           };
         };
-      }
+      };
     ) systems);
   }
 }
