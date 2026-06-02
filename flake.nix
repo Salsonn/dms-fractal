@@ -1,5 +1,5 @@
 {
-  description = "Flake that patches DankMaterialShell Clock.qml middle dot to a lambda for all systems";
+  description = "dms-patch-flake: patch DankMaterialShell Clock.qml middle dot to lambda for all systems";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -8,81 +8,71 @@
 
   outputs = { self, nixpkgs, dms, ... }:
   let
-    # Helper: list of systems exported by the upstream dms flake
+    # Systems exported by the upstream dms flake
     systems = builtins.attrNames (dms.packages or {});
 
-    # Common attribute names to try when locating the upstream package inside the dms flake
+    # QML path inside the dms-shell derivation source tree (adjust if upstream moves it)
+    qmlPath = "share/quickshell/dms/Modules/DankBar/Widgets/Clock.qml";
+
+    # Match and replacement strings
+    matchLine = 'text: "•"';
+    # Use literal glyph:
+    replacementLine = 'text: "λ"';
+    # Or use escaped unicode sequence instead:
+    # replacementLine = 'text: "\\u03BB"';
+
+    # Candidate attribute names to try inside the upstream package set
     candidateNames = [ "dms-shell" "dms" "dmsShell" "default" ];
 
-    # Function: given a system string, return the upstream package attribute and the package itself
-    findUpstreamPackage = system:
+    # Helper: pick an attribute name from a package set (pkgset)
+    pickAttrName = pkgset:
       let
-        pkgset = builtins.getAttr system dms.packages;
-        findName = name:
-          if builtins.hasAttr name pkgset then
-            { name = name; pkg = builtins.getAttr name pkgset; }
-          else null;
-        found = builtins.foldl' (acc n -> if acc == null then findName n else acc) null candidateNames;
+        attrs = builtins.attrNames pkgset;
+        tryName = name: if builtins.elem name attrs then name else null;
+        found = builtins.foldl' (acc n -> if acc == null then tryName n else acc) null candidateNames;
       in
-        if found == null then
-          # fallback: if pkgset has exactly one attr, use it
-          let attrs = builtins.attrNames pkgset; in
-          if builtins.length attrs == 1 then
-            { name = builtins.head attrs; pkg = builtins.getAttr (builtins.head attrs) pkgset; }
-          else
-            # nothing found
-            throw "dms-patch-flake: could not find upstream dms package attribute for system ${system}. Available attrs: ${builtins.concatStringsSep ', ' (builtins.attrNames pkgset)}";
-        else found;
+        if found != null then found
+        else if builtins.length attrs == 1 then builtins.head attrs
+        else throw "dms-patch-flake: could not determine upstream package attribute. Available attrs: ${builtins.concatStringsSep \", \" attrs}";
 
-    # The substitution we will apply. Adjust path or strings here if upstream changes layout.
-    qmlPath = "share/quickshell/dms/Modules/DankBar/Widgets/Clock.qml";
-    replaceMatch = 'text: "•"';
-    # replaceWithEscape = 'text: "\\u03BB"'; # writes \u03BB into the file
-    replaceWithGlyph = 'text: "λ"';        # writes literal λ into the file
+    # Function: produce a patched derivation from an upstream derivation
+    makePatched = upstreamDrv:
+      upstreamDrv.overrideAttrs (old: {
+        postPatch = ''
+          # Fail early if the expected file is not present in the source tree.
+          if [ ! -f "${qmlPath}" ]; then
+            echo "ERROR: expected QML path ${qmlPath} not found in source tree" >&2
+            exit 1
+          fi
 
-    # Function to produce a patched package for a given upstream package
-    makePatched = upstreamPkg: upstreamPkg.overrideAttrs (old: {
-      postPatch = ''
-        # Ensure the file exists before attempting substitution to fail early if path changed.
-        if [ -f "${qmlPath}" ]; then
-          substituteInPlace ${qmlPath} --replace '${replaceMatch}' '${replaceWithGlyph}'
-        else
-          echo "Warning: ${qmlPath} not found in source tree; skipping substitution" >&2
-        fi
+          substituteInPlace ${qmlPath} --replace '${matchLine}' '${replacementLine}'
 
-        ${optionalString (old.postPatch != null) ''
-          ${old.postPatch}
-        ''}
-      '';
-    });
+          ${optionalString (old.postPatch != null) ''
+            ${old.postPatch}
+          ''}
+        '';
+      });
   in
   {
-    # For each system upstream exposes, create a patched package set entry
+    # Expose a packages set with patched derivations per system
     packages = builtins.listToAttrs (map (system:
-      let upstream = findUpstreamPackage system;
-          patched = makePatched upstream.pkg;
+      let
+        pkgset = builtins.getAttr system dms.packages;
+        upstreamName = pickAttrName pkgset;
+        upstreamPkg = builtins.getAttr upstreamName pkgset;
+        patched = makePatched upstreamPkg;
       in {
         name = system;
         value = {
-          inherit (builtins.listToAttrs [{ name = "dms-fractal"; value = patched }]) dms-fractal;
-          # also expose the upstream package for convenience
-          upstreamName = upstream.name;
-          upstream = upstream.pkg;
+          # Primary exported attribute for convenience
+          dms-shell-patched = patched;
+          # Also expose upstream info for debugging
+          upstream = {
+            name = upstreamName;
+            pkg = upstreamPkg;
+          };
         };
       }
     ) systems);
-
-    # Also expose a flat packages.<system>.dms-fractal attribute for easy referencing
-    # (so other flakes can use inputs.dms-patch.packages.x86_64-linux.dms-fractal)
-    # Build the attribute set dynamically:
-    outputs = lib: let
-      pkgsBySystem = builtins.listToAttrs (map (system:
-        { name = system;
-          value = (let upstream = findUpstreamPackage system; in makePatched upstream.pkg);
-        }
-      ) systems);
-    in {
-      packages = pkgsBySystem;
-    };
   }
 }
