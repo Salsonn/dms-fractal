@@ -14,12 +14,8 @@
     # QML path inside the dms-shell derivation source tree (adjust if upstream moves it)
     qmlPath = "share/quickshell/dms/Modules/DankBar/Widgets/Clock.qml";
 
-    # Match and replacement strings
-    matchLine = 'text: "•"';
-    # Use literal glyph:
-    replacementLine = 'text: "λ"';
-    # Or use escaped unicode sequence instead:
-    # replacementLine = 'text: "\\u03BB"';
+    # Replacement: literal lambda glyph (UTF-8). If you prefer the escape sequence, change below.
+    replacement = 'text: "λ"';
 
     # Candidate attribute names to try inside the upstream package set
     candidateNames = [ "dms-shell" "dms" "dmsShell" "default" ];
@@ -39,13 +35,15 @@
     makePatched = upstreamDrv:
       upstreamDrv.overrideAttrs (old: {
         postPatch = ''
-          # Fail early if the expected file is not present in the source tree.
+          # Ensure the expected file exists in the source tree; fail early if not.
           if [ ! -f "${qmlPath}" ]; then
             echo "ERROR: expected QML path ${qmlPath} not found in source tree" >&2
             exit 1
           fi
 
-          substituteInPlace ${qmlPath} --replace '${matchLine}' '${replacementLine}'
+          # Replace the entire text: "..." property with the lambda.
+          # Use perl with UTF-8 support to be robust to upstream glyphs and encodings.
+          perl -C -0777 -pe 's/text:\s*".*?"/${replacement}/s' -i ${qmlPath}
 
           ${optionalString (old.postPatch != null) ''
             ${old.postPatch}
@@ -54,7 +52,6 @@
       });
   in
   {
-    # Expose a packages set with patched derivations per system
     packages = builtins.listToAttrs (map (system:
       let
         pkgset = builtins.getAttr system dms.packages;
@@ -64,9 +61,7 @@
       in {
         name = system;
         value = {
-          # Primary exported attribute for convenience
           dms-shell-patched = patched;
-          # Also expose upstream info for debugging
           upstream = {
             name = upstreamName;
             pkg = upstreamPkg;
