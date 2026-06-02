@@ -8,16 +8,12 @@
 
   outputs = { self, nixpkgs, dms, ... }:
   let
-    # Systems exported by the upstream dms flake
     systems = builtins.attrNames (dms.packages or {});
 
-    # QML path inside the dms-shell derivation source tree (adjust if upstream moves it)
     qmlPath = "share/quickshell/dms/Modules/DankBar/Widgets/Clock.qml";
 
-    # Candidate attribute names to try inside the upstream package set
     candidateNames = [ "dms-shell" "dms" "dmsShell" "default" ];
 
-    # Helper: pick an attribute name from a package set (pkgset)
     pickAttrName = pkgset:
       let
         attrs = builtins.attrNames pkgset;
@@ -36,19 +32,14 @@
         else if builtins.length attrs == 1 then builtins.head attrs
         else throw "dms-patch-flake: could not determine upstream package attribute. Available attrs: ${builtins.concatStringsSep sep attrs}";
 
-    # Function: produce a patched derivation from an upstream derivation
-    # We avoid embedding the lambda glyph in Nix; instead use Perl's \x{03BB} escape at build time.
     makePatched = upstreamDrv:
       upstreamDrv.overrideAttrs (old: {
         postPatch = ''
-          # Fail early if the expected file is not present in the source tree.
           if [ ! -f "${qmlPath}" ]; then
             echo "ERROR: expected QML path ${qmlPath} not found in source tree" >&2
             exit 1
           fi
 
-          # Replace the entire text: "..." property with a lambda using Perl's \x{03BB}.
-          # -0777 reads the whole file; s///s makes . match newlines.
           perl -C -0777 -pe 's/text:\s*".*?"/text: "\\x{03BB}"/s' -i ${qmlPath}
 
           ${optionalString (old.postPatch != null) ''
@@ -73,7 +64,7 @@
             pkg = upstreamPkg;
           };
         };
-      };
+      }
     ) systems);
   }
 }
