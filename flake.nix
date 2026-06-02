@@ -26,11 +26,13 @@
             (acc: n: if acc == null then tryName n else acc)
             null
             candidateNames;
+
         sep = ", ";
       in
         if found != null then found
         else if builtins.length attrs == 1 then builtins.head attrs
-        else throw "dms-patch-flake: could not determine upstream package attribute. Available attrs: ${builtins.concatStringsSep sep attrs}";
+        else throw
+          "dms-patch-flake: could not determine upstream package attribute. Available attrs: ${builtins.concatStringsSep sep attrs}";
 
     makePatched = upstreamDrv:
       upstreamDrv.overrideAttrs (old: {
@@ -41,11 +43,7 @@
           fi
 
           perl -C -0777 -pe 's/text:\s*".*?"/text: "\\x{03BB}"/s' -i ${qmlPath}
-
-          ${optionalString (old.postPatch != null) ''
-            ${old.postPatch}
-          ''}
-        '';
+        '' + (if builtins.hasAttr "postPatch" old then old.postPatch else "");
       });
   in
   {
@@ -58,13 +56,10 @@
       in {
         name = system;
         value = {
-          dms-shell-patched = patched;
-          upstream = {
-            name = upstreamName;
-            pkg = upstreamPkg;
-          };
+          dms-fractal = patched;
+          upstream = upstreamPkg;
         };
       }
     ) systems);
-  }
+  };
 }
